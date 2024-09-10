@@ -21,15 +21,33 @@ import glob
 from src.data.basic_dataset import NpyListDataset
 import pandas as pd
 
+# ABO数据集的类别ID到标签的映射
 ABO_id2label = {0: 'air conditioner', 1: 'bag', 2: 'battery charger', 3: 'bed', 4: 'bench', 5: 'birdhouse', 6: 'book or journal', 7: 'bottle rack', 8: 'bowl', 9: 'cabinet', 10: 'candle holder', 11: 'cart', 12: 'chair', 13: 'clock', 14: 'clothes hook', 15: 'clothes rack', 16: 'container or basket', 17: 'cooking pan', 18: 'cup', 19: 'dining set', 20: 'dresser', 21: 'drink coaster', 22: 'easel', 23: 'electrical cable', 24: 'exercise equipment', 25: 'exercise mat', 26: 'exercise weight', 27: 'fan', 28: 'figurine or sculpture', 29: 'file folder', 30: 'fire pit', 31: 'floor mat', 32: 'heater', 33: 'holder', 34: 'instrument stand', 35: 'jar', 36: 'ladder', 37: 'lamp', 38: 'laptop stand', 39: 'mattress', 40: 'mirror', 41: 'mount', 42: 'mouse pad', 43: 'office appliance', 44: 'ottoman', 45: 'picture frame or painting', 46: 'pillow', 47: 'plant or flower pot', 48: 'rug', 49: 'shelf', 50: 'shredder', 51: 'soap dispenser', 52: 'sofa', 53: 'speaker stand', 54: 'sports equipment', 55: 'step stool', 56: 'table', 57: 'tent', 58: 'trash can', 59: 'tray', 60: 'vanity', 61: 'vase', 62: 'wagon'}
+
+# ABO数据集的标签到类别ID的映射
 ABO_label2id = {tup[1]:tup[0] for tup in ABO_id2label.items()}
-# subABO_label2id = {0: "table", 1: "sofa", 2: "table", 3: "lamp"}
+
+# 子集ABO标签到ID的映射
 subABO_label2id = {0: "table", 1: "sofa", 2: "table", 3: "lamp"}
 # chair: 03001627, table: 04379243 
+
+# ShapeNet数据集ID到标签的映射
 shapenetid2label = {18: "chair", 47: "sofa", 49: "table", 30: "lamp"} # the order is from https://huggingface.co/datasets/ShapeNet/ShapeNetCore/tree/main
+
+# ShapeNet数据集标签到ID的映射
 label2shapenetid= {v:k for k,v in shapenetid2label.items()}
 
 def omg_np2th(omage, threshed=True):
+    """
+    将numpy格式的omage转换为PyTorch张量格式。
+    
+    参数:
+    omage (numpy.ndarray): 输入的omage数组
+    threshed (bool): 是否对alpha通道进行阈值处理
+    
+    返回:
+    torch.Tensor: 转换后的PyTorch张量
+    """
     if type(omage) is torch.Tensor:
         return omage.float()
 
@@ -40,20 +58,42 @@ def omg_np2th(omage, threshed=True):
         omage[ omage[...,3] ==0 ] = 0.
 
     # convert to pytorch
+    # 转换为PyTorch张量
     omage = torch.from_numpy(omage).float()
     omage = omage.permute(2, 0, 1) # (C, H, W)
-    omage = omage * 2 - 1 # turn [0, 1] to [-1, 1]
+    omage = omage * 2 - 1 # turn [0, 1] to [-1, 1] 将[0, 1]范围转换为[-1, 1]范围
     return omage
 
 def omg_th2np(omage):
+    """
+    将PyTorch张量格式的omage转换为numpy数组格式。
+    
+    参数:
+    omage (torch.Tensor): 输入的omage张量
+    
+    返回:
+    numpy.ndarray: 转换后的numpy数组
+    """
     if type(omage) is np.ndarray:
         return omage
     # convert to numpy
+    # 转换为numpy数组
     omage = omage.permute(1, 2, 0).cpu().numpy()
     omage = (omage + 1) / 2
     return omage
 
 class Omages1024_ABO(Dataset):
+    """
+    ABO数据集的1024分辨率omage数据加载器。
+    
+    参数:
+    metadf_path (str): 元数据文件路径
+    split (str): 数据集划分，"train"或"val"
+    split_ratio (float): 训练集比例
+    duplicate (int): 数据重复次数
+    mode (str): 数据加载模式
+    seed (int): 随机种子
+    """
     def __init__(self, metadf_path, split="train", split_ratio=.9, duplicate = 1, mode='', seed=314):
         self.__dict__.update(locals())
         self.meta_df = pd.read_pickle(metadf_path)
@@ -69,11 +109,22 @@ class Omages1024_ABO(Dataset):
         if 'overfit' in self.mode:
             return self.duplicate if self.split == "train" else 10
         return len(self.df) * self.duplicate
+    
     def __getitem__(self, ind):
+        """
+        获取指定索引的数据项。
+        
+        参数:
+        ind (int): 数据索引
+        
+        返回:
+        dict: 包含omage、索引和类别标签的字典
+        """
         ind = ind % len(self.df)
         if 'overfit' in self.mode:
             ind = 0
         # check if either omg or omage exists in the df
+        # 检查omg或omage是否存在于df中
         omg_path = self.data_path + '/' + self.df.iloc[ind]["path"] + '/omage_tensor.npz'
         omage = np.load(omg_path)['arr_0']
         omage = omg_np2th(omage, threshed=True)
@@ -83,6 +134,18 @@ class Omages1024_ABO(Dataset):
 
 # dataset for omages64
 class OmgABO64(Dataset):
+    """
+    ABO数据集的64分辨率omage数据加载器。
+    
+    参数:
+    dset_df (str): 数据集DataFrame文件路径
+    split (str): 数据集划分，"train"或"val"
+    mode (str): 数据加载模式
+    split_ratio (float): 训练集比例
+    duplicate (int): 数据重复次数
+    seed (int): 随机种子
+    cates (str或list): 要加载的类别
+    """
     def __init__(self, dset_df='datasets/ABO/omages/df_p64_m02_res64', split="train", mode='threshed', split_ratio=.9, duplicate = 1, seed=314, cates='all', **kwargs):
         super().__init__()
         self.__dict__.update(locals())
@@ -90,12 +153,12 @@ class OmgABO64(Dataset):
         self.h5path = dset_df + '.h5'
         self.full_df = pd.read_json(self.meta_df, orient='index')
         self.full_df["full_dset_ind"] = np.arange(len(self.full_df), dtype=int)
-        self.df = self.full_df[self.full_df['success']] # filter out shape_id that failed to process
+        self.df = self.full_df[self.full_df['success']] # filter out shape_id that failed to process 过滤掉处理失败的shape_id
 
         if type(cates) is not str:
             self.df = self.df[self.df["cate_text"].isin(cates)]
         if '4catemode' in self.mode or '4cateval' in self.mode:
-            with nputil.temp_seed(self.seed): # this also works for pandas sample  
+            with nputil.temp_seed(self.seed): # this also works for pandas sample  这也适用于pandas的sample方法 
                 chair_sid = self.df[self.df["cate_text"]=="chair"].sample(512).index
                 sofa_sid = self.df[self.df["cate_text"]=="sofa"].sample(512).index
                 table_sid = self.df[self.df["cate_text"]=="table"].sample(512).index
@@ -120,16 +183,46 @@ class OmgABO64(Dataset):
             self.train_split, self.val_split = splits
             if 'overfit' not in self.mode:
                 self.df = self.df.iloc[self.train_split] if split=="train" else self.df.iloc[self.val_split]
+    
     def __len__(self):
         if 'overfit' in self.mode:
             return self.duplicate if self.split == "train" else 10
         return len(self.df) * self.duplicate
+    
     def ind2name(self, ind):
+        """
+        将索引转换为对应的名称。
+        
+        参数:
+        ind (int): 数据索引
+        
+        返回:
+        str: 对应的名称
+        """
         return self.df.index[ind]
+    
     def ind2path(self, ind):
+        """
+        将索引转换为对应的文件路径。
+        
+        参数:
+        ind (int): 数据索引
+        
+        返回:
+        str: 对应的文件路径
+        """
         return self.df.iloc[ind]["path"]
 
     def __getitem__(self, ind):
+        """
+        获取指定索引的数据项。
+        
+        参数:
+        ind (int): 数据索引
+        
+        返回:
+        dict: 包含omage、索引和类别标签的字典
+        """
         ind = ind % len(self.df)
         if 'overfit' in self.mode:
             ind = ind % 10
@@ -144,9 +237,23 @@ class OmgABO64(Dataset):
         return ditem
 
 class G2M_Label_OmgABO(OmgABO64):
+    """
+    用于G2M标签的ABO数据集加载器。
+    继承自OmgABO64类。
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+    
     def __getitem__(self, ind):
+        """
+        获取指定索引的数据项，并进行G2M标签处理。
+        
+        参数:
+        ind (int): 数据索引
+        
+        返回:
+        dict: 包含处理后的图像数据和条件图像数据的字典
+        """
         ind = ind % len(self.df)
         if 'overfit' in self.mode:
             ind = 0
@@ -161,9 +268,23 @@ class G2M_Label_OmgABO(OmgABO64):
         return ditem
 
 class N2G_Label_OmgABO(OmgABO64):
+    """
+    用于N2G标签的ABO数据集加载器。
+    继承自OmgABO64类。
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+    
     def __getitem__(self, ind):
+        """
+        获取指定索引的数据项，并进行N2G标签处理。
+        
+        参数:
+        ind (int): 数据索引
+        
+        返回:
+        dict: 包含处理后的图像数据的字典
+        """
         ind = ind % len(self.df)
         if 'overfit' in self.mode:
             ind = 0
@@ -171,10 +292,25 @@ class N2G_Label_OmgABO(OmgABO64):
         img = ditem['omage'][:4]
         ditem['img'] = img
         return ditem
+
 class N2M_Label_OmgABO(OmgABO64):
+    """
+    用于N2M标签的ABO数据集加载器。
+    继承自OmgABO64
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+    
     def __getitem__(self, ind):
+        """
+        获取指定索引的数据项，并进行N2M标签处理。
+        
+        参数:
+        ind (int): 数据索引
+        
+        返回:
+        dict: 包含处理后的图像数据的字典
+        """
         ind = ind % len(self.df)
         if 'overfit' in self.mode:
             ind = 0
@@ -187,16 +323,35 @@ import numpy as np
 import pandas as pd
 @contextlib.contextmanager
 def temp_seed(seed):
+    """
+    临时设置随机种子的上下文管理器。
+    
+    参数:
+    seed (int): 随机种子
+    """
     state = np.random.get_state()
     np.random.seed(seed)
     try:
         yield
     finally:
         np.random.set_state(state)
+
 def generate_split(N, splits=[.8,.1,.1], shuffle=True, seed=314):
-    """ return a list of splits of np.arange(N)
+    """
+    return a list of splits of np.arange(N)
+    生成数据集的划分。
+    
+    参数:
+    N (int): 数据集大小
+    splits (list): 划分比例列表
+    shuffle (bool): 是否打乱数据集
+    seed (int): 随机种子
+    
+    返回:
+    list: 划分后的数据集索引列表
     """
     # split np.arange(N) into splits
+    # 将np.arange(N)划分为splits
     splits = np.array(splits)
     assert np.sum(splits) == 1
     index = np.arange(N)

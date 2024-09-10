@@ -15,6 +15,15 @@ DEFAULT_ROOT       = os.path.join(FILE_DIR, os.path.pardir)
 
 class Trainer():
     def default_opt(self):
+        """
+        设置默认选项
+        
+        参数:
+        无
+        
+        返回:
+        dict: 默认选项字典
+        """
         return dict(
             accelerator="ddp", #distributed_backend='dp',
             gpus=[2],
@@ -29,6 +38,18 @@ class Trainer():
             save_top_k=1,
         )
     def __init__(self, opt, root_dir = DEFAULT_ROOT, mode='test', gpus=[0]):
+        """
+        初始化Trainer
+        
+        参数:
+        opt: 选项配置
+        root_dir: 根目录
+        mode: 运行模式
+        gpus: 使用的GPU列表
+        
+        返回:
+        无
+        """
         if type(opt) is str:
             opt = optutil.get_opt(opt, root_dir = root_dir, src_name='nnrecon')
         self.opt = opt = argparse.Namespace(**opt)
@@ -44,6 +65,8 @@ class Trainer():
         else:
             # The effective learning rate of multi gpu with ddp = lr / `num_gpus` (we need to tune lr according to effective batch_size)
             # So in order to keep the default lr, we need to multiply `num_gpus`
+            # 多GPU使用ddp时的有效学习率 = lr / `num_gpus`（我们需要根据有效批量大小调整lr）
+            # 因此为了保持默认的lr，我们需要乘以`num_gpus`
             if self.trainer_opt["disable_auto_lr_scale"] == False:
                 self.opt.pl_model_opt["kwargs"]["optim_opt"]["lr"] *= len(trainer_opt["gpus"])
         self.minfo = self.opt.meta_info
@@ -98,6 +121,15 @@ class Trainer():
             new_lr = lr_finder.suggestion()
             print(new_lr)
     def find_lr(self):
+        """
+        查找最优学习率
+        
+        参数:
+        无
+        
+        返回:
+        无
+        """
         print("Finding optimal learning rate...")
         lr_finder = self.trainer.tuner.lr_find(self.model, datamodule = self.data_module, early_stop_threshold=10)
         #print(lr_finder.results)
@@ -107,10 +139,28 @@ class Trainer():
         print("The suggested learning rate is:", new_lr)
 
     def load_model(self):
+        """
+        加载模型
+        
+        参数:
+        无
+        
+        返回:
+        无
+        """
         self.model       = sysutil.instantiate_from_opt(self.opt.pl_model_opt)
         self.model_class = self.model.__class__
         self.data_module = sysutil.instantiate_from_opt(self.opt.datamodule_opt)
     def load_callbacks(self):
+        """
+        加载回调函数
+        
+        参数:
+        无
+        
+        返回:
+        无
+        """
         self.callbacks, trainer_opt = [], self.trainer_opt
         if not hasattr(self.opt, "callbacks"):
             return
@@ -130,6 +180,7 @@ class Trainer():
             callback = cb_class(**cb_kwargs)
             self.callbacks.append(callback)
         # adding default callbacks
+        # 添加默认回调
         self.checkpoint_callback = ModelCheckpoint(
             #filepath=os.path.join(self.minfo['checkpoints_dir'],'{epoch:03d}'),
             monitor="val/loss",
@@ -154,6 +205,15 @@ class Trainer():
         self.callbacks.append(early_stop_callback)
         self.callbacks.append(lr_monitor)
     def get_logger(self):
+        """
+        获取日志记录器
+        
+        参数:
+        无
+        
+        返回:
+        logger: 日志记录器
+        """
         trainer_opt = self.trainer_opt
         if trainer_opt['logger'] == 'tensorboard':
             logger = loggers.TensorBoardLogger(self.minfo['logs_dir'])
@@ -166,6 +226,15 @@ class Trainer():
             logger = False
         return logger
     def train(self):
+        """
+        训练模型
+        
+        参数:
+        无
+        
+        返回:
+        无
+        """
         opt = self.opt
         minfo = opt.meta_info
         expr_dir = minfo['expr_dir']
@@ -179,6 +248,7 @@ class Trainer():
         print("Model trained, best model path: ", self.checkpoint_callback.best_model_path)
         self.test(resume_from=self.checkpoint_callback.best_model_path) 
         # backup after training
+        # 训练后备份
         if False:
             print('Finished training')
             save_path = os.path.join(minfo['experiments_dir'], minfo['session_name'])
@@ -187,6 +257,15 @@ class Trainer():
             shutil.copytree(src_dir,  os.path.join(save_path,'src'))
             print('Done.')
     def test(self, resume_from=None):
+        """
+        测试模型
+        
+        参数:
+        resume_from: 恢复训练的检查点路径
+        
+        返回:
+        无
+        """
         self.data_module.prepare_data()
         self.data_module.setup()
         if resume_from is None:
@@ -199,6 +278,16 @@ class Trainer():
         self.trainer.datamodule = self.data_module
         self.trainer.test(self.model, self.data_module.test_dataloader(), ckpt_path=None)
     def test_mode(self, resume_from="last", device="cuda"):
+        """
+        进入测试模式
+        
+        参数:
+        resume_from: 恢复训练的检查点路径
+        device: 使用的设备
+        
+        返回:
+        tuple: (model, train_dataloader, val_dataloader, test_dataloader)
+        """
         if resume_from is None:
             resume_from=None
         else:
@@ -214,10 +303,20 @@ class Trainer():
         self.data_module.setup()
         return self.model, self.data_module.train_dataloader(), self.data_module.val_dataloader(), self.data_module.test_dataloader()
     def parse_resume(self, ckpt):
+        """
+        解析恢复训练的检查点路径
+        
+        参数:
+        ckpt: 检查点路径
+        
+        返回:
+        str: 解析后的检查点路径
+        """
         minfo = self.minfo
         if ckpt == '' or ckpt == 'restart':
             if 'nnrecon/experiments/' not in minfo['expr_dir'] or minfo['expr_dir'].endswith('experiments') or minfo['expr_dir'].endswith('experiments/'): 
                 raise ValueError(f"Invalid resume_from: {minfo['expr_dir']}") # prevent accidentally remove irrelevant files
+                # 防止意外删除不相关文件
             else:
                 #if os.path.exists(minfo['expr_dir']):
                     # print('==========================================')
@@ -242,6 +341,15 @@ class Trainer():
         print('Loading checkpoint: ', ckpt_path)
         return ckpt_path
     def run_callbacks(self):
+        """
+        运行回调函数
+        
+        参数:
+        无
+        
+        返回:
+        无
+        """
         self.model = self.model_class.load_from_checkpoint(self.resume_from_checkpoint)
         for callback in self.callbacks:
             if hasattr(callback, "post_training_process"):
@@ -252,11 +360,29 @@ from xgutils import qdaq
 import sys
 class ExpJob(qdaq.Job):
     def __init__(self, opt):
+        """
+        初始化ExpJob
+        
+        参数:
+        opt: 选项配置
+        
+        返回:
+        无
+        """
         if type(opt) is str:
             opt = optutil.get_opt(opt, root_dir = DEFAULT_ROOT, src_name='nnrecon')
         self.opt = opt
         self.minfo = opt['meta_info']
     def run(self, cuda_device_id):
+        """
+        运行ExpJob
+        
+        参数:
+        cuda_device_id: CUDA设备ID
+        
+        返回:
+        bool: 是否成功运行
+        """
         # Get cuda device
         PID = os.getpid()
         print(f"Name: {self.opt['expr_name']} CUDA: {cuda_device_id}, PID: {PID}")

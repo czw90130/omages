@@ -10,6 +10,7 @@ from xgutils import *
 from xgutils.vis import npfvis
 
 # new datamodule, assuming options to have (_target_, **kwargs) structure
+# 新的数据模块,假设选项具有(_target_, **kwargs)结构
 class DataModule(lightning.LightningDataModule):
     def __init__(self, batch_size: int = 32, test_batch_size=None, val_batch_size=None, num_workers: int = 8,
                  trainset_opt={'_target_':None},
@@ -17,6 +18,20 @@ class DataModule(lightning.LightningDataModule):
                  testset_opt={'_target_':None},
                  visualset_opt={'_target_':None},
                  modify_split=True):
+        """
+        初始化DataModule。
+
+        参数:
+        batch_size (int): 训练批次大小
+        test_batch_size (int): 测试批次大小
+        val_batch_size (int): 验证批次大小
+        num_workers (int): 数据加载器使用的工作进程数
+        trainset_opt (dict): 训练集选项
+        valset_opt (dict): 验证集选项
+        testset_opt (dict): 测试集选项
+        visualset_opt (dict): 可视化集选项
+        modify_split (bool): 是否修改数据集划分
+        """
         super().__init__()
         trainset_opt = copy.deepcopy(trainset_opt)
         testset_opt = copy.deepcopy(testset_opt)
@@ -35,7 +50,14 @@ class DataModule(lightning.LightningDataModule):
         self.pin_memory = False
 
     def setup(self, stage=None):
+        """
+        设置数据集。
+
+        参数:
+        stage (str): 设置阶段
+        """
         # Assign train/val datasets for use in dataloaders
+        # 为数据加载器分配训练/验证数据集
         self.train_set, self.val_set, self.test_set = None, None, None
         self.train_set = sysutil.instantiate_from_opt(self.trainset_opt)
         self.val_set = sysutil.instantiate_from_opt(self.valset_opt)
@@ -52,15 +74,51 @@ class DataModule(lightning.LightningDataModule):
             self.visual_set = sysutil.instantiate_from_opt(self.visualset_opt)
 
     def train_dataloader(self, shuffle=True):
+        """
+        返回训练数据加载器。
+
+        参数:
+        shuffle (bool): 是否打乱数据
+
+        返回:
+        DataLoader: 训练数据加载器
+        """
         print(self.train_set)
         return DataLoader(self.train_set, batch_size=self.batch_size, shuffle=shuffle, num_workers=self.num_workers, pin_memory=self.pin_memory)
 
     def val_dataloader(self, shuffle=False):
+        """
+        返回验证数据加载器。
+
+        参数:
+        shuffle (bool): 是否打乱数据
+
+        返回:
+        DataLoader: 验证数据加载器
+        """
         return DataLoader(self.val_set, batch_size=self.val_batch_size, shuffle=False, num_workers=self.num_workers, pin_memory=self.pin_memory)
 
     def test_dataloader(self, shuffle=False):
+        """
+        返回测试数据加载器。
+
+        参数:
+        shuffle (bool): 是否打乱数据
+
+        返回:
+        DataLoader: 测试数据加载器
+        """
         return DataLoader(self.test_set, batch_size=self.test_batch_size, shuffle=False, num_workers=self.num_workers, pin_memory=self.pin_memory)
 
     def visual_dataloader(self, shuffle=False):
+        """
+        返回可视化数据加载器。
+
+        参数:
+        shuffle (bool): 是否打乱数据
+
+        返回:
+        DataLoader: 可视化数据加载器
+        """
         return DataLoader(self.visual_set, batch_size=1, shuffle=False, num_workers=1, pin_memory=self.pin_memory)
 

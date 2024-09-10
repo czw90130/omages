@@ -21,7 +21,16 @@ FILE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_ROOT = os.path.join(FILE_DIR, os.path.pardir)
 
 class Trainer():
+    """
+    训练器类,用于管理模型训练、验证和测试过程。
+    """
     def default_opt(self):
+        """
+        返回默认的训练器选项。
+
+        返回:
+        dict: 包含默认训练器选项的字典
+        """
         return dict(
             fast_dev_run=False,
             gpus=[0], # int for number, -1/'auto' for all, list for specified ones
@@ -47,6 +56,15 @@ class Trainer():
         )
 
     def __init__(self, opt, root_dir=DEFAULT_ROOT, mode='test', gpus=[0]):
+        """
+        初始化Trainer。
+
+        参数:
+        opt (str或dict): 训练器选项
+        root_dir (str): 根目录路径
+        mode (str): 运行模式 ('train' 或 'test')
+        gpus (list): 使用的GPU列表
+        """
         if type(opt) is str:
             self.opt_string = opt
             opt = optutil.get_opt(opt, root_dir=root_dir,
@@ -125,6 +143,9 @@ class Trainer():
                       )
 
     def load_model(self):
+        """
+        加载模型和数据模块。
+        """
         self.opt.pl_model_opt["full_opt"] = self.opt
         self.opt.pl_model_opt["full_cfg"] = self.opt
         self.model = sysutil.instantiate_from_opt(self.opt.pl_model_opt)
@@ -133,6 +154,9 @@ class Trainer():
             self.opt.datamodule_opt)
 
     def load_callbacks(self):
+        """
+        加载回调函数。
+        """
         self.callbacks, trainer_opt = [], self.trainer_opt
         if hasattr(self.opt, "callbacks"):
             for cb_name in self.opt.callbacks:
@@ -177,6 +201,12 @@ class Trainer():
         self.callbacks.append(RichProgressBar())
 
     def get_logger(self):
+        """
+        获取日志记录器。
+
+        返回:
+        logger: 日志记录器对象
+        """
         trainer_opt = self.trainer_opt
         if trainer_opt['logger'] == 'tensorboard':
             logger = loggers.TensorBoardLogger(self.minfo['logs_dir'])
@@ -198,6 +228,15 @@ class Trainer():
         return logger
 
     def parse_resume(self, ckpt):
+        """
+        解析恢复训练的检查点路径。
+
+        参数:
+        ckpt (str): 检查点路径或关键字
+
+        返回:
+        str: 解析后的检查点路径
+        """
         minfo = self.minfo
         if ckpt == '' or ckpt == 'restart':
             # if 'src/experiments/' not in minfo['expr_dir'] or minfo['expr_dir'].endswith('experiments') or minfo['expr_dir'].endswith('experiments/'):
@@ -227,7 +266,14 @@ class Trainer():
                 ckpt_path = ckpt
         print('Loading checkpoint: ', ckpt_path)
         return ckpt_path
+
     def train(self, resume_from=None):
+        """
+        训练模型。
+
+        参数:
+        resume_from (str): 恢复训练的检查点路径
+        """
         opt = self.opt
         minfo = opt.meta_info
         expr_dir = minfo['expr_dir']
@@ -265,6 +311,12 @@ class Trainer():
             print('Done.')
 
     def test(self, resume_from=None):
+        """
+        测试模型。
+
+        参数:
+        resume_from (str): 恢复测试的检查点路径
+        """
         self.data_module.prepare_data()
         self.data_module.setup(stage='test')
         if resume_from is None:
@@ -279,6 +331,16 @@ class Trainer():
             self.model, datamodule=self.data_module, ckpt_path=None)
 
     def test_mode(self, resume_from="last", device="cuda"):
+        """
+        进入测试模式。
+
+        参数:
+        resume_from (str): 恢复测试的检查点路径
+        device (str): 使用的设备
+
+        返回:
+        tuple: (model, train_dataloader, val_dataloader, test_dataloader)
+        """
         self.model = self.model.to(device)
         if resume_from is not None:
             resume_from = self.trainer_opt['resume_from']
@@ -349,15 +411,23 @@ class ExpJob(qdaq.Job):
 if __name__ == '__main__':
     # use spawn method to enable multi-processing for pytorch
     # mp.set_start_method('spawn')
+    
+    # 创建参数解析器
     parser = argparse.ArgumentParser(add_help=False)
     #parser.add_argument('--option_path', required=True, type=str, help='path to project options')
+    
+    # 添加命令行参数
     parser.add_argument('--opts', type=str, nargs='+',
                         help='path to project options')
     parser.add_argument('--gpus', type=int, nargs='*', help='gpus to use')
     parser.add_argument('--mode', type=str, default="train",
                         choices=["train", "test", "run"], help='train or run callbacks')
     parser.add_argument('--debug', action='store_true', help='debug mode')
+    
+    # 解析命令行参数
     parsed = parser.parse_args()
+    
+    # 处理GPU选项
     gpus = parsed.gpus
     if gpus is None or len(gpus) == 0:
         gpus = [0]  # , 1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -368,22 +438,33 @@ if __name__ == '__main__':
     # gpus = list(range(len(gpus)))
     # print("**** INFO **** Resetting GPUS ids to:", gpus)
 
+    # 确保至少指定了一个选项文件
     assert (parsed.opts is not None) and len(parsed.opts) >= 1
     # If there are multiple option files specified, queue them according to gpus.
+    
+    # 如果只指定了一个选项文件
     if len(parsed.opts) == 1:
-        
-
         print("**** INFO **** Running single opt file")
+        
+        # 使用调试包装器（如果启用了调试模式）
         with sysutil.debug(if_debug=parsed.debug==True):
+            # 创建Trainer实例
             trainer = Trainer(parsed.opts[0], mode=parsed.mode, gpus=gpus)
+            
+            # 根据模式选择要执行的函数
             if parsed.mode == "train":
                 func = trainer.train
             if parsed.mode == "test":
                 func = trainer.test
             if parsed.mode == "run":
                 func = trainer.run_callbacks
+            
+            # 执行选定的函数
             func()
     else:
+        # 如果指定了多个选项文件
         print("**** INFO **** Multiple opt files: starting parallel jobs")
+        # 为每个选项文件创建一个ExpJob实例
         exps = [ExpJob(opt) for opt in parsed.opts]
+        # 使用qdaq启动并行作业
         qdaq.start(exps, gpus)
